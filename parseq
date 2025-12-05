@@ -1,0 +1,359 @@
+print("=" * 50)
+print("ДОБРО ПОЖАЛОВАТЬ В ПАРСЕР ПОЛИТИЧЕСКИХ ПАРТИЙ!")
+print("=" * 50)
+
+# Импортируем нужные библиотеки
+import json
+import csv
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, urlunparse
+
+class PoliticalPartiesParser:
+    """Класс для работы с политическими партиями"""
+    
+    def __init__(self):
+        """Конструктор - запускается при создании объекта"""
+        self.parties = []  # Здесь будем хранить все партии
+        self.url = "https://minjust.gov.ru/ru/pages/politicheskie-partii/"  # URL для парсинга
+        print("Парсер политических партий готов к работе!")
+
+    def parse_real_data(self):
+        """Реальный парсинг HTML страницы с сайта Минюста"""
+        print("Пытаемся получить реальные данные с сайта...")
+        
+        try:
+            # Создаем заголовки чтобы сайт не блокировал нас
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            # Отправляем запрос к сайту
+            response = requests.get(self.url, headers=headers, timeout=10)
+            response.raise_for_status()  # Проверяем успешность запроса
+            
+            # Создаем объект BeautifulSoup для парсинга HTML
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Здесь будет реальный парсинг структуры сайта
+            # Поскольку структура сайта может меняться, это примерный код
+            
+            real_parties = []
+            
+            # Пытаемся найти партии по разным возможным селекторам
+            # Сначала ищем таблицу с партиями
+            tables = soup.find_all('table')
+            
+            for table in tables:
+                # Ищем строки в таблице (пропускаем заголовок)
+                rows = table.find_all('tr')
+                if len(rows) > 3:  # Если таблица имеет несколько строк
+                    for row in rows[1:]:  # Пропускаем первую строку (заголовок)
+                        try:
+                            # Ищем все ячейки в строке
+                            cols = row.find_all('td')
+                            if len(cols) >= 2:  # Если есть хотя бы 2 колонки
+                                # Первая колонка может быть номером, вторая - названием партии
+                                name_elem = None
+                                doc_link = None
+                                
+                                # Ищем название партии (обычно это ссылка)
+                                for col in cols:
+                                    link = col.find('a')
+                                    if link and link.get_text(strip=True):
+                                        # Проверяем, не является ли это номером
+                                        if not link.get_text(strip=True).isdigit():
+                                            name_elem = link
+                                            name = link.get_text(strip=True)
+                                            
+                                            # Ищем ссылку на документ в этой же ячейке или соседних
+                                            # Сначала ищем PDF в этой строке
+                                            pdf_links = row.find_all('a', href=lambda x: x and '.pdf' in x.lower())
+                                            if pdf_links:
+                                                doc_link = pdf_links[0]['href']
+                                            else:
+                                                # Ищем любые ссылки с текстом "документ", "устав" и т.д.
+                                                for a in row.find_all('a'):
+                                                    text = a.get_text(strip=True).lower()
+                                                    if any(word in text for word in ['документ', 'устав', 'скачать']):
+                                                        doc_link = a['href']
+                                                        break
+                                            
+                                            break
+                                
+                                # Если не нашли ссылку, используем текст ячейки
+                                if not name_elem and cols[1].get_text(strip=True):
+                                    name = cols[1].get_text(strip=True)
+                                
+                                if name and len(name) > 3:
+                                    # Нормализуем ссылку (делаем абсолютной)
+                                    if doc_link:
+                                        if doc_link.startswith('/'):
+                                            doc_link = urljoin('https://minjust.gov.ru', doc_link)
+                                        elif not doc_link.startswith('http'):
+                                            doc_link = urljoin(self.url, doc_link)
+                                    
+                                    real_parties.append({
+                                        'name': name[:200],  # Ограничиваем длину названия
+                                        'doc_url': doc_link if doc_link else 'Нет документа'
+                                    })
+                        except Exception as e:
+                            # Пропускаем проблемные строки
+                            continue
+            
+            # Если не нашли в таблицах, ищем списки
+            if not real_parties:
+                lists = soup.find_all(['ul', 'ol'])
+                for list_elem in lists:
+                    items = list_elem.find_all('li')
+                    for item in items:
+                        # Ищем название партии
+                        name_elem = item.find('a') or item.find('strong')
+                        if name_elem:
+                            name = name_elem.get_text(strip=True)
+                            
+                            # Ищем ссылку на документ
+                            doc_link = None
+                            pdf_links = item.find_all('a', href=lambda x: x and '.pdf' in x.lower())
+                            if pdf_links:
+                                doc_link = pdf_links[0]['href']
+                            
+                            if name and len(name) > 3:
+                                if doc_link:
+                                    if doc_link.startswith('/'):
+                                        doc_link = urljoin('https://minjust.gov.ru', doc_link)
+                                
+                                real_parties.append({
+                                    'name': name[:200],
+                                    'doc_url': doc_link if doc_link else 'Нет документа'
+                                })
+            
+            if real_parties:
+                print(f"Успешно спарсено {len(real_parties)} реальных партий!")
+                return real_parties
+            else:
+                print("Не удалось извлечь реальные данные, используем демо-данные")
+                return self.create_sample_data()
+                
+        except Exception as e:
+            print(f"Ошибка при парсинге сайта: {e}")
+            print("Используем демонстрационные данные...")
+            return self.create_sample_data()
+    
+    def create_sample_data(self):
+        """
+        Создаем демонстрационные данные о партиях
+        (используем примерные данные, так как реальный сайт может быть защищен)
+        """
+        print("Создаем демонстрационные данные...")
+        
+        # Создаем примерные партии
+        sample_parties = [
+            {
+                'name': 'Единая Россия', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/er-document.pdf'
+            },
+            {
+                'name': 'Коммунистическая партия Российской Федерации', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/kprf-document.pdf'
+            },
+            {
+                'name': 'Либерально-демократическая партия России','doc_url': 'https://minjust.gov.ru/uploaded/files/ldpr-document.pdf'
+            },
+            {
+                'name': 'Справедливая Россия', 
+                'doc_url': 'Нет документа'
+            },
+            {
+                'name': 'Новые люди', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/new-people-document.pdf'
+            },
+            {
+                'name': 'Партия Роста', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/growth-document.pdf'
+            },
+            {
+                'name': 'Яблоко', 
+                'doc_url': 'Нет документа'
+            },
+            {
+                'name': 'Российская партия пенсионеров за социальную справедливость', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/pensioners-document.pdf'
+            },
+            {
+                'name': 'Родина', 
+                'doc_url': 'Нет документа'
+            },
+            {
+                'name': 'Гражданская платформа', 
+                'doc_url': 'https://minjust.gov.ru/uploaded/files/civic-platform-document.pdf'
+            },
+        ]
+        
+        print(f"Создано {len(sample_parties)} демонстрационных партий")
+        return sample_parties
+    
+    def sort_parties_by_name(self, parties):
+        """Сортирует партии по алфавиту"""
+        print("Сортируем партии по названию...")
+        # Сортируем по названию
+        sorted_parties = sorted(parties, key=lambda x: x['name'])
+        print("Сортировка завершена!")
+        return sorted_parties
+    
+    def display_parties(self, parties, title="ПОЛИТИЧЕСКИЕ ПАРТИИ"):
+        """Красиво показывает партии на экране"""
+        print(f"\n{title}:")
+        print("=" * 90)
+        
+        for i, party in enumerate(parties, 1):
+            print(f"{i:3}. {party['name']}")
+            print(f"     Документ: {party['doc_url']}")
+            print("-" * 90)
+    
+    def filter_parties_by_document(self, parties, has_document=True):
+        """Фильтрует партии по наличию документа"""
+        if has_document:
+            print("Фильтруем партии С документами...")
+            filtered_parties = [party for party in parties if party['doc_url'] != 'Нет документа']
+        else:
+            print("Фильтруем партии БЕЗ документов...")
+            filtered_parties = [party for party in parties if party['doc_url'] == 'Нет документа']
+        
+        print(f"Найдено {len(filtered_parties)} партий")
+        return filtered_parties
+    
+    def filter_parties_by_name(self, parties, search_term):
+        """Фильтрует партии по названию"""
+        print(f"Ищем партии, содержащие '{search_term}'...")
+        
+        filtered_parties = []
+        for party in parties:
+            # Ищем без учета регистра
+            if search_term.lower() in party['name'].lower():
+                filtered_parties.append(party)
+        
+        print(f"Найдено {len(filtered_parties)} партий")
+        return filtered_parties
+    
+    def save_to_json(self, parties, filename="parties.json"):
+        """Сохраняет партии в JSON файл (удобно для программ)"""
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(parties, f, ensure_ascii=False, indent=2)
+            print(f"Данные сохранены в {filename}")
+        except Exception as e:
+            print(f"Ошибка при сохранении: {e}")
+    
+    def save_to_csv(self, parties, filename="parties.csv"):
+        """Сохраняет партии в CSV файл (удобно для Excel)"""
+        try:
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=['name', 'doc_url'])
+                writer.writeheader()  # Записываем заголовки
+                writer.writerows(parties)  # Записываем данные
+            print(f"Данные сохранены в {filename}")
+        except Exception as e:
+            print(f"Ошибка при сохранении: {e}")
+    
+    def show_statistics(self, parties):
+        """Показывает статистику по партиям"""
+        if not parties:
+            print("Нет данных для статистики")return
+        
+        # Считаем партии с документами и без
+        parties_with_docs = sum(1 for party in parties if party['doc_url'] != 'Нет документа')
+        parties_without_docs = len(parties) - parties_with_docs
+        
+        print(f"\nСТАТИСТИКА ПО ПАРТИЯМ:")
+        print("=" * 40)
+        print(f"Всего партий: {len(parties)}")
+        print(f"Партий с документами: {parties_with_docs}")
+        print(f"Партий без документов: {parties_without_docs}")
+        
+        # Выводим первые 5 самых длинных названий
+        if parties:
+            sorted_by_name_length = sorted(parties, key=lambda x: len(x['name']), reverse=True)
+            print(f"\nСамые длинные названия:")
+            for i, party in enumerate(sorted_by_name_length[:5], 1):
+                print(f"{i}. {party['name'][:50]}... ({len(party['name'])} символов)")
+
+def main():
+    """Главная функция программы"""
+    print("ПАРСЕР ПОЛИТИЧЕСКИХ ПАРТИЙ РОССИИ")
+    print("=" * 50)
+    print("Эта программа показывает список политических партий")
+    print("и ссылки на их документы (уставы, регистрация)!")
+    print()
+    
+    # Создаем парсер
+    parser = PoliticalPartiesParser()
+    
+    # Загружаем данные
+    print("Загружаем данные о политических партиях...")
+    all_parties = parser.parse_real_data()
+    sorted_parties = parser.sort_parties_by_name(all_parties)
+    
+    # Показываем все партии
+    parser.display_parties(sorted_parties, "ВСЕ ПОЛИТИЧЕСКИЕ ПАРТИИ")
+    
+    # Сохраняем данные
+    parser.save_to_json(sorted_parties)
+    parser.save_to_csv(sorted_parties)
+    
+    # Показываем статистику
+    parser.show_statistics(sorted_parties)
+    
+    # Меню для фильтрации
+    print("\nМЕНЮ ФИЛЬТРАЦИИ")
+    print("1. Показать партии С документами")
+    print("2. Показать партии БЕЗ документов")
+    print("3. Найти партию по названию")
+    print("4. Выйти")
+    
+    choice = input("\nВыберите действие (1-4): ").strip()
+    
+    if choice == '1':
+        # Партии с документами
+        parties_with_docs = parser.filter_parties_by_document(sorted_parties, has_document=True)
+        if parties_with_docs:
+            parser.display_parties(parties_with_docs, "ПАРТИИ С ДОКУМЕНТАМИ")
+            parser.save_to_json(parties_with_docs, "parties_with_documents.json")
+            parser.save_to_csv(parties_with_docs, "parties_with_documents.csv")
+        else:
+            print("Партий с документами не найдено")
+            
+    elif choice == '2':
+        # Партии без документов
+        parties_without_docs = parser.filter_parties_by_document(sorted_parties, has_document=False)
+        if parties_without_docs:
+            parser.display_parties(parties_without_docs, "ПАРТИИ БЕЗ ДОКУМЕНТОВ")
+            parser.save_to_json(parties_without_docs, "parties_without_documents.json")
+            parser.save_to_csv(parties_without_docs, "parties_without_documents.csv")
+        else:
+            print("Партий без документов не найдено")
+            
+    elif choice == '3':
+        # Поиск по названию
+        search_term = input("Введите часть названия для поиска: ").strip()
+        if search_term:
+            found_parties = parser.filter_parties_by_name(sorted_parties, search_term)
+            if found_parties:
+                parser.display_parties(found_parties, f"ПАРТИИ С '{search_term.upper()}' В НАЗВАНИИ")
+                parser.save_to_json(found_parties, f"parties_search_{search_term}.json")
+                parser.save_to_csv(found_parties, f"parties_search_{search_term}.csv")
+            else:
+                print(f"Партий с '{search_term}' в названии не найдено")
+    
+    print("\nПРОГРАММА ЗАВЕРШЕНА!")
+    print("Созданные файлы:")
+    print("parties.json - все партии (JSON)")
+    print("parties.csv - все партии (CSV)")
+    print("Дополнительные файлы (если вы их создали):")
+    print("- parties_with_documents.json/csv")
+    print("- parties_without_documents.json/csv")
+    print("- parties_search_*.json/csv")
+
+# Запускаем программу, только если файл запущен напрямую
+if name == "__main__":
+    main()
