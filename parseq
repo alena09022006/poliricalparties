@@ -259,7 +259,8 @@ class PoliticalPartiesParser:
     def show_statistics(self, parties):
         """Показывает статистику по партиям"""
         if not parties:
-            print("Нет данных для статистики")return
+            print("Нет данных для статистики")
+return
         
         # Считаем партии с документами и без
         parties_with_docs = sum(1 for party in parties if party['doc_url'] != 'Нет документа')
