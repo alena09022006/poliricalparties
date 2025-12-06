@@ -271,14 +271,6 @@ class PoliticalPartiesParser:
         print(f"Всего партий: {len(parties)}")
         print(f"Партий с документами: {parties_with_docs}")
         print(f"Партий без документов: {parties_without_docs}")
-
-        # Выводим первые 5 самых длинных названий
-        if parties:
-            sorted_by_name_length = sorted(parties, key=lambda x: len(x['name']), reverse=True)
-            print(f"\nСамые длинные названия:")
-            for i, party in enumerate(sorted_by_name_length[:5], 1):
-                print(f"{i}. {party['name'][:50]}... ({len(party['name'])} символов)")
-
 def main():
     """Главная функция программы"""
     print("ПАРСЕР ПОЛИТИЧЕСКИХ ПАРТИЙ РОССИИ")
@@ -291,7 +283,6 @@ def main():
     parser = PoliticalPartiesParser()
 
     # Загружаем данные
-    print("Загружаем данные о политических партиях...")
     all_parties = parser.parse_real_data()
     sorted_parties = parser.sort_parties_by_name(all_parties)
 
@@ -334,13 +325,7 @@ def main():
                 print(f"Партий с '{search_term}' в названии не найдено")
 
     print("\nПРОГРАММА ЗАВЕРШЕНА!")
-    print("Созданные файлы:")
-    print("parties.json - все партии (JSON)")
-    print("parties.csv - все партии (CSV)")
-    print("Дополнительные файлы (если вы их создали):")
-    print("- parties_with_documents.json/csv")
-    print("- parties_without_documents.json/csv")
-    print("- parties_search_*.json/csv")
+    
 
 # Запускаем программу, только если файл запущен напрямую
 if __name__ == "__main__":
