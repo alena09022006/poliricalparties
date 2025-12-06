@@ -13,9 +13,4 @@
 HTML-страница скачивается автоматически при запуске скрипта с адреса:
 https://minjust.gov.ru/ru/pages/politicheskie-partii/
 
- Установка
-
-1. Клонируйте репозиторий:
-```bash
-git clone https://github.com/ваш_username/political-parties-parser.git
-cd political-parties-parser
+ 
